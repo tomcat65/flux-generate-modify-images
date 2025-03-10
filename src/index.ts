@@ -66,63 +66,31 @@ async function generateImage(args: ImageRequest): Promise<{ message?: string; fi
     );
     console.log("🛠 API Response:", response.data);
 
-    if (response.data.output) {
-      console.log("🔗 Image URL:", response.data.output);
-      const outputFilename = `generated_${Date.now()}.jpg`;
+    if (response.data.output && Array.isArray(response.data.output)) {
+      const imageUrl = response.data.output[0];  // Extract the first URL
+      console.log("🔗 Extracted Image URL:", imageUrl);
+
+      const outputFilename = `generated_${Date.now()}.webp`;  // Use .webp since Replicate returns webp
       const outputPath = path.join(GENERATED_IMAGES_DIR, outputFilename);
 
-      if (typeof response.data.output === "string") {
-        await download.image({ url: response.data.output, dest: outputPath });
+      if (typeof imageUrl === "string") {
+        console.log("⬇️ Attempting to download:", imageUrl);
+
+        await download.image({ url: imageUrl, dest: outputPath })
+            .then(() => console.log("✅ Image successfully saved at:", outputPath))
+            .catch(err => console.error("🔥 Image download failed:", err));
+
       } else {
         console.error("⚠️ Unexpected output format:", response.data.output);
       }
 
       return { message: "Image generated successfully.", file: outputPath };
     } else {
+      console.error("❌ No output received from the model.");
       return { error: "No output received from the model." };
     }
   } catch (error: any) {
     console.error("🔥 Error generating image:", error);
-    return { error: error.message || "Internal Server Error" };
-  }
-}
-
-async function modifyImage(args: ImageRequest): Promise<{ message?: string; file?: string; error?: string }> {
-    if (!args.prompt || !args.image_filename) {
-        return { error: "Missing required parameters (prompt, image_filename)." };
-    }
-
-  const inputImagePath = path.join(IMAGE_INPUT_DIR, args.image_filename);
-  if (!fs.existsSync(inputImagePath)) {
-    return { error: "Specified image file does not exist." };
-  }
-
-  console.log("🛠 Modifying image:", inputImagePath, "with prompt:", args.prompt);
-
-  try {
-    const response = await axiosInstance.post(
-      "/models/black-forest-labs/flux-schnell/predictions",
-      { input: { prompt: args.prompt, image: inputImagePath } }
-    );
-    console.log("🛠 API Response:", response.data);
-
-    if (response.data.output) {
-      console.log("🔗 Modified Image URL:", response.data.output);
-      const outputFilename = `modified_${Date.now()}_${args.image_filename}`;
-      const outputPath = path.join(MODIFIED_IMAGES_DIR, outputFilename);
-
-      if (typeof response.data.output === "string") {
-        await download.image({ url: response.data.output, dest: outputPath });
-      } else {
-        console.error("⚠️ Unexpected output format:", response.data.output);
-      }
-
-      return { message: "Image modified successfully.", file: outputPath };
-    } else {
-      return { error: "No output received from the model." };
-    }
-  } catch (error: any) {
-    console.error("🔥 Error modifying image:", error);
     return { error: error.message || "Internal Server Error" };
   }
 }
@@ -134,12 +102,12 @@ app.post("/mcp", async (req: Request, res: Response): Promise<void> => {
         console.log("📩 Received request:", name, args);
 
         if (name === "generate_image") {
+            console.log("⚡ Processing generate_image request");
             const response = await generateImage(args);
-            res.json(response);
-        } else if (name === "modify_image") {
-            const response = await modifyImage(args);
+            console.log("✅ Response generated:", response);
             res.json(response);
         } else {
+            console.log("❌ Unknown request received");
             res.status(400).json({ error: "Unknown tool requested." });
         }
     } catch (error: any) {
